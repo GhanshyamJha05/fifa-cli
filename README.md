@@ -52,7 +52,33 @@ go build -o fifa ./cmd/fifa
 ./fifa bracket
 ./fifa stats
 ./fifa search Messi
+./fifa serve          # start REST API on :8080
 ```
+
+### REST API
+
+```bash
+go build -o fifa-server ./cmd/server
+./fifa-server
+# or
+./fifa serve
+```
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check |
+| `GET /dashboard` | Concurrent dashboard payload |
+| `GET /teams` | Paginated teams (`?page=1&page_size=50`) |
+| `GET /teams/{id}` | Team by ID |
+| `GET /teams/{id}/players` | Squad |
+| `GET /players/{id}` | Player profile |
+| `GET /matches` | Matches (`?date=2026-06-13`) |
+| `GET /matches/upcoming` | Upcoming fixtures |
+| `GET /matches/results` | Results |
+| `GET /standings` | Group tables |
+| `GET /stats/topscorers` | Top scorers |
+
+OpenAPI spec: `configs/openapi.yaml`
 
 ## Configuration
 
@@ -92,24 +118,32 @@ This app integrates with [API-Football](https://www.api-football.com/) (league I
 ## Architecture
 
 ```
-cmd/fifa/           Entry point
+cmd/
+  fifa/             CLI entry point
+  server/           REST API entry point
 internal/
-  api/              Provider interface, API-Football client, mock data
-  cache/            BoltDB response cache
-  config/           Viper configuration
-  domain/           Domain models
-  service/          Business logic layer
+  api/              API-Football client, mock data
+  provider/         FootballProvider, cache wrapper, factory
+  repository/       Cache repository (DI)
+  cache/            BoltDB implementation
+  handlers/         HTTP handlers + router
+  middleware/       Logging, CORS, recovery
+  server/           Graceful HTTP server
+  service/          Business logic (errgroup concurrency)
   cmd/              Cobra commands
-  ui/
-    styles/         Lip Gloss themes
-    render/         CLI output rendering
-    tui/            Bubble Tea interactive app
+  ui/               TUI + render + styles
+pkg/
+  pagination/       Pagination helpers
+  httputil/         JSON responses
+configs/
+  openapi.yaml      API spec
 ```
 
 ## Testing
 
 ```bash
 go test ./...
+go test -bench=. ./internal/cache ./pkg/pagination ./internal/service
 ```
 
 ## Tech Stack

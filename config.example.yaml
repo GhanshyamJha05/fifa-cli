@@ -16,6 +16,12 @@ cache_ttl: 15m
 # Log level: debug, info, warn, error
 log_level: info
 
+# REST API server (fifa serve / cmd/server)
+server_host: "0.0.0.0"
+server_port: 8080
+cors_origins:
+  - "*"
+
 # Favorite teams and players (bonus feature)
 favorites:
   teams:

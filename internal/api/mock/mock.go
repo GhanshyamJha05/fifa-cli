@@ -301,6 +301,24 @@ func (p *Provider) GetTeam(_ context.Context, name string) (*domain.Team, error)
 	return p.findTeam(name)
 }
 
+func (p *Provider) GetTeamByID(_ context.Context, id int) (*domain.Team, error) {
+	for i := range p.teams {
+		if p.teams[i].ID == id {
+			return &p.teams[i], nil
+		}
+	}
+	return nil, fmt.Errorf("team not found: id %d", id)
+}
+
+func (p *Provider) GetPlayerByID(_ context.Context, id int) (*domain.Player, error) {
+	for i := range p.players {
+		if p.players[i].ID == id {
+			return &p.players[i], nil
+		}
+	}
+	return nil, fmt.Errorf("player not found: id %d", id)
+}
+
 func (p *Provider) GetSquad(_ context.Context, teamName string) ([]domain.Player, error) {
 	team, err := p.findTeam(teamName)
 	if err != nil {

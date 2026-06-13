@@ -188,6 +188,7 @@ func Run(svc *service.Service, theme string) error {
 }
 
 func (m Model) Init() tea.Cmd {
+	m.svc.RefreshCache(context.Background())
 	return tea.Batch(m.spinner.Tick, m.loadTab(tabHome))
 }
 
@@ -198,12 +199,11 @@ func (m Model) loadTab(t tab) tea.Cmd {
 
 		switch t {
 		case tabHome:
-			info, err := m.svc.GetTournamentInfo(ctx)
+			dashboard, err := m.svc.LoadDashboard(ctx)
 			if err != nil {
 				return errMsg(err)
 			}
-			today, _ := m.svc.GetMatchesToday(ctx)
-			return dataMsg{tab: t, data: map[string]any{"info": info, "today": today}}
+			return dataMsg{tab: t, data: dashboard}
 		case tabTeams:
 			teams, err := m.svc.GetTeams(ctx)
 			if err != nil {
@@ -342,9 +342,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loaded[msg.tab] = true
 		switch msg.tab {
 		case tabHome:
-			d := msg.data.(map[string]any)
-			m.info = d["info"].(*domain.TournamentInfo)
-			m.todayMatches = d["today"].([]domain.Match)
+			d := msg.data.(*service.DashboardData)
+			m.info = d.Info
+			m.todayMatches = d.TodayMatches
+			m.teams = d.Teams
+			m.standings = d.Standings
+			m.stats = d.Stats
 		case tabTeams:
 			m.teams = msg.data.([]domain.Team)
 			items := make([]list.Item, len(m.teams))

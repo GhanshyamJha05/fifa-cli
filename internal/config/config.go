@@ -21,6 +21,9 @@ type Config struct {
 	Theme        string        `mapstructure:"theme"`
 	Favorites    Favorites     `mapstructure:"favorites"`
 	LogLevel     string        `mapstructure:"log_level"`
+	ServerHost   string        `mapstructure:"server_host"`
+	ServerPort   int           `mapstructure:"server_port"`
+	CORSOrigins  []string      `mapstructure:"cors_origins"`
 }
 
 // Favorites stores user favorite teams and players.
@@ -57,6 +60,9 @@ func Load() (*Config, error) {
 	v.SetDefault("use_mock", true)
 	v.SetDefault("theme", "dark")
 	v.SetDefault("log_level", "info")
+	v.SetDefault("server_host", "0.0.0.0")
+	v.SetDefault("server_port", 8080)
+	v.SetDefault("cors_origins", []string{"*"})
 
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create config dir: %w", err)

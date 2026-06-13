@@ -6,57 +6,162 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/GhanshyamJha05/fifa-cli/internal/api"
-	"github.com/GhanshyamJha05/fifa-cli/internal/api/apifootball"
-	"github.com/GhanshyamJha05/fifa-cli/internal/api/mock"
-	"github.com/GhanshyamJha05/fifa-cli/internal/cache"
 	"github.com/GhanshyamJha05/fifa-cli/internal/config"
 	"github.com/GhanshyamJha05/fifa-cli/internal/domain"
+	"github.com/GhanshyamJha05/fifa-cli/internal/provider"
+	"github.com/GhanshyamJha05/fifa-cli/internal/repository"
+	"golang.org/x/sync/errgroup"
 )
 
-// Service is the main application service.
+// Service is the main application service with injected dependencies.
 type Service struct {
-	provider api.Provider
-	cache    *cache.Store
+	provider provider.FootballProvider
+	cache    *repository.CacheRepository
 	cfg      *config.Config
 	logger   *slog.Logger
+
+	refreshMu sync.Mutex
+	refreshing bool
 }
 
-// New creates a Service from configuration.
+// New creates a Service from configuration (composition root).
 func New(cfg *config.Config, logger *slog.Logger) (*Service, error) {
-	store, err := cache.Open(filepath.Join(cfg.CacheDir, "fifa.db"), cfg.CacheTTL)
+	cacheRepo, err := repository.OpenCache(filepath.Join(cfg.CacheDir, "fifa.db"), cfg.CacheTTL)
 	if err != nil {
 		return nil, fmt.Errorf("open cache: %w", err)
 	}
-
-	var inner api.Provider
-	if cfg.UseMock || cfg.APIKey == "" {
-		logger.Info("using mock data provider (set FIFA_API_KEY for live data)")
-		inner = mock.New()
-	} else {
-		logger.Info("using API-Football provider")
-		inner = apifootball.New(cfg.APIBaseURL, cfg.APIKey, cfg.LeagueID, cfg.Season, logger)
-	}
-
-	provider := api.NewCachedProvider(inner, store, cfg.CacheTTL)
-
+	p := provider.NewFootballProvider(cfg, cacheRepo, logger)
 	return &Service{
-		provider: provider,
-		cache:    store,
+		provider: p,
+		cache:    cacheRepo,
 		cfg:      cfg,
 		logger:   logger,
 	}, nil
 }
 
+// NewWithDeps injects dependencies for testing.
+func NewWithDeps(p provider.FootballProvider, cache *repository.CacheRepository, cfg *config.Config, logger *slog.Logger) *Service {
+	return &Service{provider: p, cache: cache, cfg: cfg, logger: logger}
+}
+
 // Close releases resources.
 func (s *Service) Close() error {
+	if s.cache == nil {
+		return nil
+	}
 	return s.cache.Close()
 }
 
 // Config returns the service configuration.
 func (s *Service) Config() *config.Config { return s.cfg }
+
+// Provider returns the underlying football provider (for advanced use).
+func (s *Service) Provider() provider.FootballProvider { return s.provider }
+
+// DashboardData holds concurrently loaded home screen data.
+type DashboardData struct {
+	Info          *domain.TournamentInfo
+	TodayMatches  []domain.Match
+	Teams         []domain.Team
+	Standings     []domain.GroupStanding
+	Stats         *domain.TournamentStats
+}
+
+// LoadDashboard fetches tournament overview data concurrently.
+func (s *Service) LoadDashboard(ctx context.Context) (*DashboardData, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	var data DashboardData
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		info, err := s.provider.GetTournamentInfo(ctx)
+		if err != nil {
+			return err
+		}
+		data.Info = info
+		return nil
+	})
+	g.Go(func() error {
+		matches, err := s.provider.GetMatchesToday(ctx)
+		if err != nil {
+			return err
+		}
+		data.TodayMatches = matches
+		return nil
+	})
+	g.Go(func() error {
+		teams, err := s.provider.GetTeams(ctx)
+		if err != nil {
+			return err
+		}
+		data.Teams = teams
+		return nil
+	})
+	g.Go(func() error {
+		standings, err := s.provider.GetStandings(ctx)
+		if err != nil {
+			return err
+		}
+		data.Standings = standings
+		return nil
+	})
+	g.Go(func() error {
+		stats, err := s.provider.GetStats(ctx)
+		if err != nil {
+			return err
+		}
+		data.Stats = stats
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+// RefreshCache warms core caches in the background without blocking the caller.
+func (s *Service) RefreshCache(parent context.Context) {
+	s.refreshMu.Lock()
+	if s.refreshing {
+		s.refreshMu.Unlock()
+		return
+	}
+	s.refreshing = true
+	s.refreshMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.refreshMu.Lock()
+			s.refreshing = false
+			s.refreshMu.Unlock()
+		}()
+
+		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+		defer cancel()
+
+		g, ctx := errgroup.WithContext(ctx)
+		fetches := []func() error{
+			func() error { _, err := s.provider.GetTeams(ctx); return err },
+			func() error { _, err := s.provider.GetMatches(ctx); return err },
+			func() error { _, err := s.provider.GetStandings(ctx); return err },
+			func() error { _, err := s.provider.GetStats(ctx); return err },
+		}
+		for _, fn := range fetches {
+			g.Go(fn)
+		}
+		if err := g.Wait(); err != nil {
+			s.logger.Warn("background cache refresh failed", "error", err)
+		} else {
+			s.logger.Debug("background cache refresh completed")
+		}
+	}()
+}
 
 func (s *Service) GetTeams(ctx context.Context) ([]domain.Team, error) {
 	return s.provider.GetTeams(ctx)
@@ -66,12 +171,20 @@ func (s *Service) GetTeam(ctx context.Context, name string) (*domain.Team, error
 	return s.provider.GetTeam(ctx, name)
 }
 
+func (s *Service) GetTeamByID(ctx context.Context, id int) (*domain.Team, error) {
+	return s.provider.GetTeamByID(ctx, id)
+}
+
 func (s *Service) GetSquad(ctx context.Context, teamName string) ([]domain.Player, error) {
 	return s.provider.GetSquad(ctx, teamName)
 }
 
 func (s *Service) GetPlayer(ctx context.Context, name string) (*domain.Player, error) {
 	return s.provider.GetPlayer(ctx, name)
+}
+
+func (s *Service) GetPlayerByID(ctx context.Context, id int) (*domain.Player, error) {
+	return s.provider.GetPlayerByID(ctx, id)
 }
 
 func (s *Service) GetMatches(ctx context.Context) ([]domain.Match, error) {
@@ -143,4 +256,19 @@ func TournamentProgress(info *domain.TournamentInfo) float64 {
 		return 0
 	}
 	return float64(info.Completed) / float64(info.TotalMatches) * 100
+}
+
+// SearchPlayers filters players by name (case-insensitive) from cached teams/squads path.
+func SearchPlayers(players []domain.Player, query string) []domain.Player {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return players
+	}
+	var out []domain.Player
+	for _, p := range players {
+		if strings.Contains(strings.ToLower(p.Name), q) {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -1,0 +1,109 @@
+openapi: 3.0.3
+info:
+  title: FIFA World Cup 2026 API
+  version: 1.0.0
+  description: REST API for World Cup teams, matches, standings, and statistics.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /dashboard:
+    get:
+      summary: Concurrent dashboard payload
+      responses:
+        "200":
+          description: Dashboard data
+  /teams:
+    get:
+      summary: List teams
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Paginated teams
+  /teams/{id}:
+    get:
+      summary: Get team by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Team
+        "404":
+          description: Not found
+  /teams/{id}/players:
+    get:
+      summary: Team squad
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Players
+  /players/{id}:
+    get:
+      summary: Get player by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Player
+  /matches:
+    get:
+      summary: List matches
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+        - name: page
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated matches
+  /matches/upcoming:
+    get:
+      summary: Upcoming fixtures
+      responses:
+        "200":
+          description: Matches
+  /matches/results:
+    get:
+      summary: Completed results
+      responses:
+        "200":
+          description: Matches
+  /standings:
+    get:
+      summary: Group standings
+      responses:
+        "200":
+          description: Standings
+  /stats/topscorers:
+    get:
+      summary: Top scorers
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Scorers

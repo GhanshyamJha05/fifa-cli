@@ -227,6 +227,58 @@ func (c *Client) GetTeam(ctx context.Context, name string) (*domain.Team, error)
 	return nil, fmt.Errorf("team not found: %s", name)
 }
 
+func (c *Client) GetTeamByID(ctx context.Context, id int) (*domain.Team, error) {
+	teams, err := c.GetTeams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range teams {
+		if teams[i].ID == id {
+			return &teams[i], nil
+		}
+	}
+	return nil, fmt.Errorf("team not found: id %d", id)
+}
+
+func (c *Client) GetPlayerByID(ctx context.Context, id int) (*domain.Player, error) {
+	var result apiResponse[[]apiPlayer]
+	resp, err := c.client.R().
+		SetContext(ctx).
+		SetQueryParams(map[string]string{
+			"id": fmt.Sprintf("%d", id),
+		}).
+		SetResult(&result).
+		Get("/players")
+	if err := c.checkErr(resp, err); err != nil {
+		return nil, err
+	}
+	if len(result.Response) == 0 {
+		return nil, fmt.Errorf("player not found: id %d", id)
+	}
+	return c.mapPlayer(result.Response[0])
+}
+
+func (c *Client) mapPlayer(p apiPlayer) (*domain.Player, error) {
+	if len(p.Statistics) == 0 {
+		return &domain.Player{ID: p.Player.ID, Name: p.Player.Name, Age: p.Player.Age}, nil
+	}
+	s := p.Statistics[0]
+	goals, assists := 0, 0
+	if s.Goals.Total != nil {
+		goals = *s.Goals.Total
+	}
+	if s.Goals.Assists != nil {
+		assists = *s.Goals.Assists
+	}
+	return &domain.Player{
+		ID: p.Player.ID, Name: p.Player.Name, Age: p.Player.Age,
+		TeamID: s.Team.ID, TeamName: s.Team.Name,
+		Position: s.Games.Position, Number: s.Games.Number,
+		Captain: s.Games.Captain, Goals: goals, Assists: assists,
+		Yellow: s.Cards.Yellow, Red: s.Cards.Red, Minutes: s.Games.Minutes,
+	}, nil
+}
+
 func (c *Client) GetSquad(ctx context.Context, teamName string) ([]domain.Player, error) {
 	team, err := c.GetTeam(ctx, teamName)
 	if err != nil {

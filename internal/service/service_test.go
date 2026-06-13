@@ -6,7 +6,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/GhanshyamJha05/fifa-cli/internal/api/mock"
 	"github.com/GhanshyamJha05/fifa-cli/internal/config"
+	"github.com/GhanshyamJha05/fifa-cli/internal/domain"
+	"github.com/GhanshyamJha05/fifa-cli/internal/provider"
+	"github.com/GhanshyamJha05/fifa-cli/internal/repository"
 	"github.com/GhanshyamJha05/fifa-cli/internal/service"
 )
 
@@ -18,12 +22,15 @@ func testService(t *testing.T) *service.Service {
 		CacheTTL: 0,
 		Theme:    "dark",
 	}
-	svc, err := service.New(cfg, slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	cacheRepo, err := repository.OpenCache(cfg.CacheDir+"/fifa.db", cfg.CacheTTL)
 	if err != nil {
-		t.Fatalf("new service: %v", err)
+		t.Fatalf("cache: %v", err)
 	}
-	t.Cleanup(func() { _ = svc.Close() })
-	return svc
+	t.Cleanup(func() { _ = cacheRepo.Close() })
+
+	p := provider.NewCachedProvider(mock.New(), cacheRepo, cfg.CacheTTL)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	return service.NewWithDeps(p, cacheRepo, cfg, logger)
 }
 
 func TestGetTeams(t *testing.T) {
@@ -48,6 +55,17 @@ func TestGetTeam(t *testing.T) {
 	}
 }
 
+func TestGetTeamByID(t *testing.T) {
+	svc := testService(t)
+	team, err := svc.GetTeamByID(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team.Name != "Brazil" {
+		t.Fatalf("got %q", team.Name)
+	}
+}
+
 func TestSearch(t *testing.T) {
 	svc := testService(t)
 	results, err := svc.Search(context.Background(), "Messi")
@@ -59,14 +77,17 @@ func TestSearch(t *testing.T) {
 	}
 }
 
-func TestGetStandings(t *testing.T) {
+func TestLoadDashboardConcurrent(t *testing.T) {
 	svc := testService(t)
-	standings, err := svc.GetStandings(context.Background())
+	data, err := svc.LoadDashboard(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(standings) == 0 {
-		t.Fatal("expected standings")
+	if data.Info == nil {
+		t.Fatal("expected tournament info")
+	}
+	if len(data.Teams) == 0 {
+		t.Fatal("expected teams in dashboard")
 	}
 }
 
@@ -94,5 +115,28 @@ func TestFilterMatchesByDate(t *testing.T) {
 	filtered := service.FilterMatchesByDate(matches, date)
 	if len(filtered) == 0 {
 		t.Fatal("expected matches on date")
+	}
+}
+
+func TestSearchPlayers(t *testing.T) {
+	players := []domain.Player{
+		{Name: "Lionel Messi"},
+		{Name: "Neymar"},
+		{Name: "Harry Kane"},
+	}
+	results := service.SearchPlayers(players, "messi")
+	if len(results) != 1 || results[0].Name != "Lionel Messi" {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+}
+
+func BenchmarkSearchPlayers(b *testing.B) {
+	players := make([]domain.Player, 100)
+	for i := range players {
+		players[i] = domain.Player{Name: "Player " + string(rune('A'+i%26))}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = service.SearchPlayers(players, "Player")
 	}
 }

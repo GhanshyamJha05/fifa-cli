@@ -54,7 +54,7 @@ func Execute() error {
 		teamsCmd(), teamCmd(), squadCmd(), playerCmd(),
 		matchesCmd(), nextCmd(), resultsCmd(),
 		standingsCmd(), bracketCmd(), statsCmd(), searchCmd(),
-		h2hCmd(), exportCmd(),
+		h2hCmd(), exportCmd(), serveCmd(),
 	)
 
 	return root.Execute()
