@@ -1,0 +1,42 @@
+# Binaries (root only — do not use bare "fifa" or cmd/fifa/ gets ignored)
+/fifa
+/fifa.exe
+fifa.exe
+
+# Build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Coverage
+*.out
+coverage.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config with secrets
+config.yaml
+.env
+.env.*
+
+# Data
+*.db
+.fifa-cli/

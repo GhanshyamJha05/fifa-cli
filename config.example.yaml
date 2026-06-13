@@ -1,0 +1,25 @@
+# FIFA CLI Configuration
+# Copy to ~/.fifa-cli/config.yaml
+
+# API-Football key from https://www.api-football.com/
+api_key: "your-api-key-here"
+
+# Use mock demo data when true or when no API key is set
+use_mock: false
+
+# Theme: dark, light, or fifa
+theme: fifa
+
+# Cache TTL (e.g. 15m, 1h)
+cache_ttl: 15m
+
+# Log level: debug, info, warn, error
+log_level: info
+
+# Favorite teams and players (bonus feature)
+favorites:
+  teams:
+    - Brazil
+    - Argentina
+  players:
+    - Lionel Messi
