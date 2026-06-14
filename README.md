@@ -1,4 +1,4 @@
-# ⚽ FIFA World Cup 2026 CLI
+# ⚽ FIFA 2026 CLI
 
 A production-quality terminal dashboard for the 2026 FIFA World Cup — built with Go, Cobra, Bubble Tea, Lip Gloss, and Bubbles.
 
